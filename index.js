@@ -46,6 +46,7 @@ app.post("/book", async (req, res) => {
             checkOut,
             adults,
             children,
+            userPhone
         } = req.body;
 
         const bookingsRef = db.ref("bookings");
@@ -93,6 +94,7 @@ app.post("/book", async (req, res) => {
             checkOut,
             adults,
             children,
+            userPhone,
             createdAt: new Date().toISOString(),
         });
 
@@ -153,6 +155,57 @@ app.post("/check-availability", async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ success: false });
+    }
+});
+
+
+
+app.post("/check-user", async (req, res) => {
+    try {
+        const { phone } = req.body;
+
+        const snapshot = await db.ref("users").once("value");
+        const users = snapshot.val();
+
+        let foundUser = null;
+
+        if (users) {
+            Object.entries(users).forEach(([key, user]) => {
+                if (user.phone === phone) {
+                    foundUser = { id: key, ...user };
+                }
+            });
+        }
+
+        res.json({
+            exists: !!foundUser,
+            user: foundUser,
+        });
+
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
+
+app.post("/create-user", async (req, res) => {
+    try {
+        const { name, phone } = req.body;
+
+        const userRef = await db.ref("users").push({
+            name,
+            phone,
+            createdAt: new Date().toISOString(),
+        });
+
+        res.json({
+            success: true,
+            userId: userRef.key,
+        });
+
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 });
 
