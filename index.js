@@ -10,57 +10,58 @@ app.use(express.json());
 const serviceAccount = require("./serviceAccountKey.json");
 
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL: "https://eduniketan-freelance-default-rtdb.asia-southeast1.firebasedatabase.app/"
 });
 
-const db = admin.firestore();
+const db = admin.database();
 
 // ✅ Test route
 app.get("/", (req, res) => {
-  res.send("Backend Running 🚀");
+    res.send("Backend Running 🚀");
 });
 
 // 🚀 Start server
 app.listen(4000, "0.0.0.0", () => {
-  console.log("Server running on port 4000");
+    console.log("Server running on port 4000");
 });
 
 
 // 📅 Create Booking API
 app.post("/book", async (req, res) => {
-  console.log("Incoming request:", req.body); // 👈 ADD THIS
+    console.log("Incoming request:", req.body); // 👈 ADD THIS
 
-  try {
-    const {
-      roomName,
-      pricePerNight,
-      totalPrice,
-      checkIn,
-      checkOut,
-      adults,
-      children,
-    } = req.body;
+    try {
+        const {
+            roomName,
+            pricePerNight,
+            totalPrice,
+            checkIn,
+            checkOut,
+            adults,
+            children,
+        } = req.body;
 
-    const bookingRef = await db.collection("bookings").add({
-      roomName,
-      pricePerNight,
-      totalPrice,
-      checkIn,
-      checkOut,
-      adults,
-      children,
-      createdAt: new Date(),
-    });
+        const bookingRef = await db.ref("bookings").push({
+            roomName,
+            pricePerNight,
+            totalPrice,
+            checkIn,
+            checkOut,
+            adults,
+            children,
+            createdAt: new Date().toISOString(),
+        });
 
-    res.json({
-      success: true,
-      bookingId: bookingRef.id,
-    });
-  } catch (error) {
-    console.error("ERROR:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
+        res.json({
+            success: true,
+            bookingId: bookingRef.key,
+        });
+    } catch (error) {
+        console.error("ERROR:", error);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+        });
+    }
 });
