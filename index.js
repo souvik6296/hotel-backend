@@ -19,6 +19,12 @@ admin.initializeApp({
 
 const db = admin.database();
 
+const ROOM_INVENTORY = {
+    "Deluxe Room": 5,
+    "Super Deluxe": 3,
+    "Suite": 2
+};
+
 // ✅ Test route
 app.get("/", (req, res) => {
     res.send("Backend Running 🚀");
@@ -30,10 +36,7 @@ app.listen(4000, "0.0.0.0", () => {
 });
 
 
-// 📅 Create Booking API
 app.post("/book", async (req, res) => {
-    console.log("Incoming request:", req.body); // 👈 ADD THIS
-
     try {
         const {
             roomName,
@@ -45,7 +48,44 @@ app.post("/book", async (req, res) => {
             children,
         } = req.body;
 
-        const bookingRef = await db.ref("bookings").push({
+        const bookingsRef = db.ref("bookings");
+        const snapshot = await bookingsRef.once("value");
+        const bookings = snapshot.val();
+
+        const newCheckIn = new Date(checkIn);
+        const newCheckOut = new Date(checkOut);
+
+        let bookedCount = 0;
+
+        if (bookings) {
+            Object.values(bookings).forEach((booking) => {
+                if (booking.roomName === roomName) {
+                    const existingCheckIn = new Date(booking.checkIn);
+                    const existingCheckOut = new Date(booking.checkOut);
+
+                    // 🔥 Check overlap
+                    if (
+                        newCheckIn < existingCheckOut &&
+                        newCheckOut > existingCheckIn
+                    ) {
+                        bookedCount++;
+                    }
+                }
+            });
+        }
+
+        const totalRooms = ROOM_INVENTORY[roomName] || 1;
+
+        // 🚨 Check if rooms available
+        if (bookedCount >= totalRooms) {
+            return res.status(400).json({
+                success: false,
+                message: "No rooms available for selected dates ❌",
+            });
+        }
+
+        // ✅ Save booking
+        const bookingRef = await bookingsRef.push({
             roomName,
             pricePerNight,
             totalPrice,
@@ -59,12 +99,60 @@ app.post("/book", async (req, res) => {
         res.json({
             success: true,
             bookingId: bookingRef.key,
+            remainingRooms: totalRooms - bookedCount - 1,
         });
+
     } catch (error) {
-        console.error("ERROR:", error);
+        console.error(error);
         res.status(500).json({
             success: false,
             error: error.message,
         });
     }
 });
+
+
+// 🔍 Check Availability API
+app.post("/check-availability", async (req, res) => {
+    try {
+        const { roomName, checkIn, checkOut } = req.body;
+
+        const bookingsRef = db.ref("bookings");
+        const snapshot = await bookingsRef.once("value");
+        const bookings = snapshot.val();
+
+        const newCheckIn = new Date(checkIn);
+        const newCheckOut = new Date(checkOut);
+
+        let bookedCount = 0;
+
+        if (bookings) {
+            Object.values(bookings).forEach((booking) => {
+                if (booking.roomName === roomName) {
+                    const existingCheckIn = new Date(booking.checkIn);
+                    const existingCheckOut = new Date(booking.checkOut);
+
+                    if (
+                        newCheckIn < existingCheckOut &&
+                        newCheckOut > existingCheckIn
+                    ) {
+                        bookedCount++;
+                    }
+                }
+            });
+        }
+
+        const totalRooms = ROOM_INVENTORY[roomName] || 1;
+        const availableRooms = totalRooms - bookedCount;
+
+        res.json({
+            success: true,
+            availableRooms,
+        });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false });
+    }
+});
+
