@@ -3,10 +3,11 @@ const express = require("express");
 const cors = require("cors");
 const admin = require("firebase-admin");
 const Razorpay = require("razorpay");
+const crypto = require("crypto");
 
 const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
 const app = express();
@@ -52,8 +53,25 @@ app.post("/book", async (req, res) => {
             checkOut,
             adults,
             children,
-            userPhone
+            userPhone,
+            razorpay_payment_id,
+            razorpay_order_id,
+            razorpay_signature
         } = req.body;
+
+        // 🛡️ Verify Payment Signature
+        if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
+            return res.status(400).json({ success: false, message: "Payment details missing ❌" });
+        }
+
+        const generated_signature = crypto
+            .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+            .update(razorpay_order_id + "|" + razorpay_payment_id)
+            .digest("hex");
+
+        if (generated_signature !== razorpay_signature) {
+            return res.status(400).json({ success: false, message: "Invalid payment signature ❌" });
+        }
 
         const bookingsRef = db.ref("bookings");
         const snapshot = await bookingsRef.once("value");
@@ -217,23 +235,24 @@ app.post("/create-user", async (req, res) => {
 
 // 💳 Create Order
 app.post("/create-order", async (req, res) => {
-  try {
-    const { amount } = req.body;
+    try {
+        const { amount } = req.body;
 
-    const options = {
-      amount: amount * 100, // ₹ → paise
-      currency: "INR",
-      receipt: "receipt_" + Date.now(),
-    };
+        const options = {
+            amount: amount * 100, // ₹ → paise
+            currency: "INR",
+            receipt: "receipt_" + Date.now(),
+        };
 
-    const order = await razorpay.orders.create(options);
+        const order = await razorpay.orders.create(options);
 
-    res.json({
-      success: true,
-      order,
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false });
-  }
+        res.json({
+            success: true,
+            order,
+            keyId: process.env.RAZORPAY_KEY_ID,
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false });
+    }
 });
