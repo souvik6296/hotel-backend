@@ -54,23 +54,17 @@ app.post("/book", async (req, res) => {
             adults,
             children,
             userPhone,
-            razorpay_payment_id,
-            razorpay_order_id,
-            razorpay_signature
+            paymentLinkId
         } = req.body;
 
-        // 🛡️ Verify Payment Signature
-        if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
-            return res.status(400).json({ success: false, message: "Payment details missing ❌" });
+        // 🛡️ Verify Payment using Razorpay API
+        if (!paymentLinkId) {
+            return res.status(400).json({ success: false, message: "Payment link ID missing ❌" });
         }
 
-        const generated_signature = crypto
-            .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-            .update(razorpay_order_id + "|" + razorpay_payment_id)
-            .digest("hex");
-
-        if (generated_signature !== razorpay_signature) {
-            return res.status(400).json({ success: false, message: "Invalid payment signature ❌" });
+        const paymentLink = await razorpay.paymentLink.fetch(paymentLinkId);
+        if (paymentLink.status !== "paid") {
+            return res.status(400).json({ success: false, message: `Payment not completed. Status: ${paymentLink.status} ❌` });
         }
 
         const bookingsRef = db.ref("bookings");
@@ -233,26 +227,31 @@ app.post("/create-user", async (req, res) => {
     }
 });
 
-// 💳 Create Order
+// 💳 Create Payment Link
 app.post("/create-order", async (req, res) => {
     try {
-        const { amount } = req.body;
+        const { amount, name, phone, description } = req.body;
 
-        const options = {
+        const paymentLink = await razorpay.paymentLink.create({
             amount: amount * 100, // ₹ → paise
             currency: "INR",
-            receipt: "receipt_" + Date.now(),
-        };
-
-        const order = await razorpay.orders.create(options);
+            accept_partial: false,
+            description: description || "Hotel Booking",
+            customer: {
+                name: name || "Customer",
+                contact: phone || "9999999999"
+            },
+            notify: { sms: false, email: false },
+            reminder_enable: false,
+        });
 
         res.json({
             success: true,
-            order,
-            keyId: process.env.RAZORPAY_KEY_ID,
+            paymentUrl: paymentLink.short_url,
+            paymentLinkId: paymentLink.id
         });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ success: false });
+        res.status(500).json({ success: false, error: error.message });
     }
 });
