@@ -54,17 +54,23 @@ app.post("/book", async (req, res) => {
             adults,
             children,
             userPhone,
-            paymentLinkId
+            razorpay_payment_id,
+            razorpay_order_id,
+            razorpay_signature
         } = req.body;
 
-        // 🛡️ Verify Payment using Razorpay API
-        if (!paymentLinkId) {
-            return res.status(400).json({ success: false, message: "Payment link ID missing ❌" });
+        // 🛡️ Verify Payment Signature
+        if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
+            return res.status(400).json({ success: false, message: "Payment details missing ❌" });
         }
 
-        const paymentLink = await razorpay.paymentLink.fetch(paymentLinkId);
-        if (paymentLink.status !== "paid") {
-            return res.status(400).json({ success: false, message: `Payment not completed. Status: ${paymentLink.status} ❌` });
+        const generated_signature = crypto
+            .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+            .update(razorpay_order_id + "|" + razorpay_payment_id)
+            .digest("hex");
+
+        if (generated_signature !== razorpay_signature) {
+            return res.status(400).json({ success: false, message: "Invalid payment signature ❌" });
         }
 
         const bookingsRef = db.ref("bookings");
@@ -227,28 +233,23 @@ app.post("/create-user", async (req, res) => {
     }
 });
 
-// 💳 Create Payment Link
+// 💳 Create Order
 app.post("/create-order", async (req, res) => {
     try {
         const { amount, name, phone, description } = req.body;
 
-        const paymentLink = await razorpay.paymentLink.create({
+        const options = {
             amount: amount * 100, // ₹ → paise
             currency: "INR",
-            accept_partial: false,
-            description: description || "Hotel Booking",
-            customer: {
-                name: name || "Customer",
-                contact: phone || "9999999999"
-            },
-            notify: { sms: false, email: false },
-            reminder_enable: false,
-        });
+            receipt: "receipt_" + Date.now(),
+        };
+
+        const order = await razorpay.orders.create(options);
 
         res.json({
             success: true,
-            paymentUrl: paymentLink.short_url,
-            paymentLinkId: paymentLink.id
+            order,
+            keyId: process.env.RAZORPAY_KEY_ID,
         });
     } catch (error) {
         console.error(error);
