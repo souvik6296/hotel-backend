@@ -297,3 +297,29 @@ app.get("/user-bookings/:phone", async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+
+app.get("/all-bookings", async (req, res) => {
+    try {
+        const snapshot = await db.ref("bookings").once("value");
+        const bookings = snapshot.val();
+
+        let allBookings = [];
+
+        if (bookings) {
+            Object.entries(bookings).forEach(([id, booking]) => {
+                allBookings.push({
+                    id,
+                    ...booking,
+                });
+            });
+        }
+
+        res.json({
+            success: true,
+            bookings: allBookings,
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false });
+    }
+});
