@@ -54,6 +54,7 @@ app.post("/book", async (req, res) => {
             adults,
             children,
             userPhone,
+            name,
             razorpay_payment_id,
             razorpay_order_id,
             razorpay_signature
@@ -119,6 +120,10 @@ app.post("/book", async (req, res) => {
             adults,
             children,
             userPhone,
+            name,
+            paymentId: razorpay_payment_id,
+            orderId: razorpay_order_id,
+            status: "confirmed",
             createdAt: new Date().toISOString(),
         });
 
@@ -253,6 +258,42 @@ app.post("/create-order", async (req, res) => {
         });
     } catch (error) {
         console.error(error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+
+
+// 📜 Get User Bookings
+app.get("/user-bookings/:phone", async (req, res) => {
+    try {
+        const { phone } = req.params;
+
+        const snapshot = await db.ref("bookings").once("value");
+        const bookings = snapshot.val();
+
+        let userBookings = [];
+
+        if (bookings) {
+            Object.entries(bookings).forEach(([id, booking]) => {
+                if (booking.userPhone === phone) {
+                    userBookings.push({
+                        id,
+                        ...booking,
+                    });
+                }
+            });
+        }
+
+        // 🔽 Sort latest first
+        userBookings.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        res.json({
+            success: true,
+            bookings: userBookings,
+        });
+
+    } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });
